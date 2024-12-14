@@ -1,0 +1,145 @@
+-- Crear base de datos
+CREATE DATABASE IF NOT EXISTS perfumes;
+
+USE perfumes;
+
+-- --------------------------------------------------------
+
+-- Estructura de la tabla clientes
+CREATE TABLE clientes (
+  id_cliente INT(11) NOT NULL AUTO_INCREMENT,  -- Asegurar que sea AUTO_INCREMENT
+  nombre VARCHAR(100) DEFAULT NULL,
+  correo_electronico VARCHAR(250) NOT NULL,
+  direccion VARCHAR(255) DEFAULT NULL,
+  latitud DECIMAL(10,8) DEFAULT NULL,
+  longitud DECIMAL(11,8) DEFAULT NULL,
+  contraseña VARCHAR(255) NOT NULL,
+  PRIMARY KEY (id_cliente)  -- Asegurar que la clave primaria esté definida
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Volcado de datos para la tabla clientes
+INSERT INTO clientes (nombre, correo_electronico, direccion, latitud, longitud, contraseña) VALUES
+('Daniel', 'pepo@gmail.com', 'car 73', 4.62289357, -74.13530404, '123');
+
+-- --------------------------------------------------------
+
+-- Estructura de la tabla perfumes
+CREATE TABLE perfumes (
+  id_perfume INT(11) NOT NULL AUTO_INCREMENT,  -- Asegurar que sea AUTO_INCREMENT
+  nombre VARCHAR(100) DEFAULT NULL,
+  descripcion TEXT DEFAULT NULL,
+  precio DECIMAL(10,2) DEFAULT NULL,
+  stock INT(11) DEFAULT NULL,
+  imagen VARCHAR(250) NOT NULL,
+  PRIMARY KEY (id_perfume)  -- Asegurar que la clave primaria esté definida
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Volcado de datos para la tabla perfumes
+INSERT INTO perfumes (nombre, descripcion, precio, stock, imagen) VALUES
+('Perfume 1', 'Descripción del perfume 1', 100.00, 50, './img/perfume1.jpg'),
+('Perfume 2', 'Descripción del perfume 2', 150.00, 60, './img/perfume2.jpg');
+
+-- --------------------------------------------------------
+
+-- Estructura de la tabla compras
+CREATE TABLE compras (
+  id_compra INT(11) NOT NULL AUTO_INCREMENT,  -- Asegurar que sea AUTO_INCREMENT
+  id_cliente INT(11) NOT NULL,  -- No debe ser NULL para establecer la relación
+  id_perfume INT(11) NOT NULL,  -- No debe ser NULL para establecer la relación
+  fecha DATETIME DEFAULT NULL,
+  cantidad INT(11) DEFAULT NULL,
+  PRIMARY KEY (id_compra),  -- Asegurar que la clave primaria esté definida
+  -- Definición de claves foráneas
+  CONSTRAINT fk_compras_cliente FOREIGN KEY (id_cliente) REFERENCES clientes(id_cliente) ON DELETE CASCADE,
+  CONSTRAINT fk_compras_perfume FOREIGN KEY (id_perfume) REFERENCES perfumes(id_perfume) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Volcado de datos para la tabla compras
+INSERT INTO compras (id_cliente, id_perfume, fecha, cantidad) VALUES
+(1, 1, '2024-12-12 10:00:00', 2),
+(1, 2, '2024-12-13 11:00:00', 1);
+
+-- --------------------------------------------------------
+
+-- Disparador para actualizar el stock de los perfumes después de una compra
+DELIMITER $$
+CREATE TRIGGER after_insert_compras
+AFTER INSERT ON compras
+FOR EACH ROW
+BEGIN
+  UPDATE perfumes SET stock = stock - NEW.cantidad WHERE id_perfume = NEW.id_perfume;
+END$$
+DELIMITER ;
+
+-- --------------------------------------------------------
+
+-- Estructura de la tabla devoluciones
+CREATE TABLE devoluciones (
+  id_devolucion INT(11) NOT NULL AUTO_INCREMENT,  -- Asegurar que sea AUTO_INCREMENT
+  id_compra INT(11) NOT NULL,  -- Relación con compras
+  fecha DATETIME DEFAULT NULL,
+  motivo VARCHAR(255) DEFAULT NULL,
+  PRIMARY KEY (id_devolucion),  -- Asegurar que la clave primaria esté definida
+  CONSTRAINT fk_devoluciones_compra FOREIGN KEY (id_compra) REFERENCES compras(id_compra) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+-- Estructura de la tabla sucursales
+CREATE TABLE sucursales (
+  id_sucursal INT(11) NOT NULL AUTO_INCREMENT,  -- Asegurar que sea AUTO_INCREMENT
+  nombre VARCHAR(100) DEFAULT NULL,
+  latitud DECIMAL(10,8) DEFAULT NULL,
+  longitud DECIMAL(11,8) DEFAULT NULL,
+  PRIMARY KEY (id_sucursal)  -- Asegurar que la clave primaria esté definida
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Volcado de datos para la tabla sucursales
+INSERT INTO sucursales (nombre, latitud, longitud) VALUES
+('Sucursal sur', 4.58541472, -74.14449299),
+('Sucursal Norte', 4.75209567, -74.02989361);
+
+-- --------------------------------------------------------
+
+-- Crear procedimientos almacenados
+
+DELIMITER $$
+CREATE PROCEDURE registro_compra (IN p_id_cliente INT, IN p_id_perfume INT, IN p_cantidad INT)
+BEGIN
+  DECLARE stock_actual INT;
+
+  -- Obtener el stock actual del perfume específico
+  SELECT stock INTO stock_actual
+  FROM perfumes
+  WHERE id_perfume = p_id_perfume
+  LIMIT 1;
+
+  -- Validar si hay stock suficiente
+  IF stock_actual >= p_cantidad THEN
+    -- Registrar la compra
+    INSERT INTO compras (id_cliente, id_perfume, cantidad, fecha)
+    VALUES (p_id_cliente, p_id_perfume, p_cantidad, NOW());
+
+    -- Actualizar el stock solo del perfume seleccionado
+    UPDATE perfumes
+    SET stock = stock_actual - p_cantidad
+    WHERE id_perfume = p_id_perfume;
+  ELSE
+    -- Lanza un error si no hay stock suficiente
+    SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Stock insuficiente';
+  END IF;
+END$$registro_compraregistro_compra
+
+DELIMITER ;
+
+DELIMITER $$
+CREATE PROCEDURE reporte_devoluciones (IN p_mes INT, IN p_anio INT)
+BEGIN  
+  SELECT d.*, c.fecha, c.id_cliente  
+  FROM devoluciones d  
+  JOIN compras c ON d.id_compra = c.id_compra  
+  WHERE MONTH(c.fecha) = p_mes AND YEAR(c.fecha) = p_anio;  
+END$$
+
+DELIMITER ;
